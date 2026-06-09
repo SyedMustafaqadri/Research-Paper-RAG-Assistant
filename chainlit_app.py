@@ -1,4 +1,3 @@
-import os
 import time
 import chainlit as cl
 from langchain_core.runnables import RunnableConfig
@@ -89,7 +88,6 @@ async def on_summarize(action: cl.Action):
     status_msg = cl.Message(content="Generating structured summary (Overview, Methodology, Results, Limitations)...")
     await status_msg.send()
     
-    start_time = time.time()
     try:
         # Retrieve chunk text from DB
         with get_db() as db:
@@ -109,6 +107,13 @@ async def on_summarize(action: cl.Action):
         # Generate summary
         summary = await generate_summary(chunks_data, "Summary")
         
+        # Convert CL output format to plain text if needed
+        if isinstance(summary, list):
+            # Extracts the text from blocks like [{'type': 'text', 'text': '...'}]
+            summary = "\n".join(
+                item.get("text", "") for item in summary if item.get("type") == "text"
+            )
+
         # Save to chat history
         chat_id = cl.user_session.get("chat_id")
         ChatService.save_message(chat_id, "assistant", summary)
@@ -176,7 +181,7 @@ async def on_message(message: cl.Message):
         await cl.Message(content=final_content).send()
 
         # Save assistant message to database
-        ChatService.save_message(chat_id, "assistant", final_content)
+        await cl.make_async(ChatService.save_message)(chat_id, "assistant", final_content)
 
         # Log retrieval metadata (TICKET-019)
         await cl.make_async(ChatService.log_retrieval)(
